@@ -1,0 +1,215 @@
+//--------------------------------------
+//--- 010 Editor v5.0 Binary Template
+//
+// File:
+// Author: YAROSBUG
+// Revision:
+// Purpose:
+
+// Notes:
+
+// ResourceInfo.location -> Resource
+// TexResource.index -> Names[i]
+// Names.index -> ResourceInfo[i]
+// ResourceInfo[Names.index] -> Resource
+// ResourceInfo[Names[TexResource.index]] -> NewResource - "TexResource" is a part of "NewResource"
+
+// PNG maps to KLEITEX1
+// TEX maps to KLEISRF1
+//--------------------------------------
+
+#define SIG_KLEI_SURFACE    "KLEISRF1" // defined as TEX in NamesList
+#define SIG_KLEI_TEXTURE    "KLEITEX1" // defined as PNG in NamesList
+#define SIG_KLEI_BLOB       "KLEIBLOB" // data as is
+#define SIG_KLEI_ANIMATION  "KLEIANM1"
+#define SIG_KLEI_MODEL      "KLEIMDL1"
+#define SIG_KLEI_BLD        "KLEIBLD1" // has .fla file names in it (related to Adobe Flash .fla files?)
+
+//ResourceInfo -------------------------------------------------------
+typedef struct {
+    int32 slabIndex<format=hex>; // = 0 in 100%
+    int32 size<format=hex>;
+    int32 location<format=hex>; // increases with item index (position). Always greater then prev item value
+    char type[4]<open=suppress>;
+} ResourceInfo<read=ResourceInfo_Read>;
+
+string ResourceInfo_Read(ResourceInfo &info) {
+    local string result;
+    SPrintf(result, "%s", info.type);
+    return result;
+};
+//---------------------------------------------------------------------
+
+//ResourceName -------------------------------------------------------
+typedef struct {
+    int32 nameLength <hidden=true>;
+    char name[nameLength]<open=suppress>;
+    if((nameLength & 3) != 0) { //4 bytes aligned
+        byte padding[4 - (nameLength & 3)] <hidden=true>;
+    }
+    int32 RI_index; //ResourceInfo[index] to this ResourceName
+} ResourceName<read=ResourceName_Read, size=ResourceName_Size>;
+
+string ResourceName_Read(ResourceName &resourceName) {
+    return resourceName.name;
+};
+
+int ResourceName_Size(ResourceName &resourceName) {
+    local int32 textLen = ReadUInt(startof(resourceName));
+    local int32 padding = (4 - (textLen & 3)) & 3;
+    return textLen + padding + 8;
+};
+//---------------------------------------------------------------------
+
+//KLEI_Surface --------------------------------------------------------
+typedef struct {
+    //overall header size is 2C
+    byte signature[8]<open=suppress>; //KLEISRF1
+    int32 size <format=hex>; //including signature and this field (in bytes)
+    int32 openglType<format=hex>; //0x83F3 = GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, 0x1908 = GL_RGBA
+    int32 openglStorageType<format=hex>; //0x8058 = GL_RGBA8_OES, 0x83F3 = GL_COMPRESSED_RGBA_S3TC_DXT5_EXT
+    int32 isDXTCompressed; //DXT5
+    int32 mipCount;
+    int32 totalSizeOfAllMips<format=hex>;
+    struct MipLevel {
+        int32 size <format=hex>;
+        int32 width;
+        int32 height;
+        int32 compressedSize <format=hex>;
+        byte compressedData[compressedSize] <format=hex, open=suppress>; //zlib stream
+    } mipLevel[mipCount]<optimize=false>;
+} KLEI_SRF<size=KLEI_SRF_Size>; 
+
+int KLEI_SRF_Size(KLEI_SRF &srf) {
+    return ReadUInt(startof(srf)+8);
+} 
+//---------------------------------------------------------------------
+
+//KLEI_Texture --------------------------------------------------------
+typedef struct {
+    //overall header size is 30h
+    byte signature[8]<open=suppress>; //KLEITEX1
+    int32 size <format=hex>; //including signature and this field (in bytes)
+    int32 index;    //index in resourceInfoList (probably should point to surface type resource only)
+    int32 widthPx;  //in pixels
+    int32 heightPx;
+    struct Affine2D {
+        float scaleX;    //ralative to the size of surface in which it resides (value from 0 to 1)
+        float x2y1;
+        float x1y2;
+        float scaleY;
+        float translateX; // ralative to the size of surface in which it resides (value from 0 to 1)
+        float translateY; // ralative to the size of surface in which it resides (value from 0 to 1)
+    } affine2d;
+} KLEI_TEX<size=KLEI_TEX_Size, read=KLEI_TEX_Read>; 
+
+int KLEI_TEX_Size(KLEI_TEX &tex) {
+    return ReadUInt(startof(tex)+8);
+} 
+
+string KLEI_TEX_Read(KLEI_TEX &tex) {
+    local string result;
+    SPrintf(result, "%d", tex.index);
+    return result;
+};
+//---------------------------------------------------------------------
+
+//ResourceInfoList ----------------------------------------------------
+typedef struct {
+    int32 itemsCount <hidden=true>;
+    ResourceInfo items[itemsCount];    
+} ResourceInfoList<read=ResourceInfoList_Read>;
+
+string ResourceInfoList_Read(ResourceInfoList &unk_struct1_array) {
+    local string result;   
+    SPrintf(result, "%d", unk_struct1_array.itemsCount);
+    return result;
+};
+//---------------------------------------------------------------------
+
+//ResourceNameList ----------------------------------------------------
+typedef struct {
+    int32 itemsCount <hidden=true>;
+    ResourceName items[itemsCount] <optimize=false>;    
+} ResourceNameList<read=ResourceNameList_Read>;
+
+string ResourceNameList_Read(ResourceNameList &unk_struct2_array) {
+    local string result;   
+    SPrintf(result, "%d", unk_struct2_array.itemsCount);
+    return result;
+};
+//---------------------------------------------------------------------
+
+//SurfaceList ---------------------------------------------------------
+typedef struct (ResourceInfoList &ril) {
+    local int32 surfaceCount;
+    local int32 i;
+    local int32 offset;
+    local char sig[9];
+
+    for (i = 0; i < ril.itemsCount; i++) {
+        offset = resourceInfoList.items[i].location;
+        FSeek(offset);
+    
+        ReadBytes(sig, FTell(), 8);
+    
+        if(sig == SIG_KLEI_SURFACE) {
+            FSeek(offset);
+            KLEI_SRF surface;
+            surfaceCount++;
+        }
+    }  
+} SurfaceList<read=SurfaceList_Read>;
+
+string SurfaceList_Read(SurfaceList &surfaceList) {
+    local string result;   
+    SPrintf(result, "%d", surfaceList.surfaceCount);
+    return result;
+};
+//---------------------------------------------------------------------
+
+//TextureList ---------------------------------------------------------
+typedef struct (ResourceInfoList &ril) {
+    local int32 textureCount;
+    local int32 i;
+    local int32 offset;
+    local char sig[9];
+
+    for (i = 0; i < ril.itemsCount; i++) {
+        offset = resourceInfoList.items[i].location;
+        FSeek(offset);
+    
+        ReadBytes(sig, FTell(), 8);
+    
+        if(sig == SIG_KLEI_TEXTURE) {
+            FSeek(offset);
+            KLEI_TEX texture;
+            textureCount++;
+        }
+    }  
+} TextureList<read=TextureList_Read>;
+
+string TextureList_Read(TextureList &textureList) {
+    local string result;   
+    SPrintf(result, "%d", textureList.textureCount);
+    return result;
+};
+//---------------------------------------------------------------------
+// Main
+
+RequiresVersion(5, 0, 0);
+LittleEndian();
+
+Printf("Start time: %s\n", GetCurrentTime("hh:mm:ss"));
+
+byte signature[8]<open=suppress>;
+int32 fileSize;
+int32 slabCount;
+
+ResourceInfoList resourceInfoList;
+ResourceNameList resourceNameList;
+SurfaceList surfaceList(resourceInfoList);
+FSeek(0); //Workaround
+TextureList textureList(resourceInfoList);
+
+Printf("End time: %s\n", GetCurrentTime("hh:mm:ss"));
