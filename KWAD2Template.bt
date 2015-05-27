@@ -112,6 +112,18 @@ string KLEI_TEX_Read(KLEI_TEX &tex) {
     SPrintf(result, "%d", tex.index);
     return result;
 };
+//------------------------------------------------------------------
+
+//KLEI_Blob --------------------------------------------------------
+typedef struct {
+    byte signature[8]<open=suppress>; //KLEIBLOB
+    int32 dataSize <format=hex>;
+    byte data[dataSize]<open=suppress>;
+} KLEI_BLOB<size=KLEI_BLOB_Size>; 
+
+int KLEI_BLOB_Size(KLEI_BLOB &blob) {
+    return ReadUInt(startof(blob)+8)+12;
+} 
 //---------------------------------------------------------------------
 
 //ResourceInfoList ----------------------------------------------------
@@ -195,6 +207,34 @@ string TextureList_Read(TextureList &textureList) {
     return result;
 };
 //---------------------------------------------------------------------
+
+//BlobList ---------------------------------------------------------
+typedef struct (ResourceInfoList &ril) {
+    local int32 blobCount;
+    local int32 i;
+    local int32 offset;
+    local char sig[9];
+
+    for (i = 0; i < ril.itemsCount; i++) {
+        offset = resourceInfoList.items[i].location;
+        FSeek(offset);
+    
+        ReadBytes(sig, FTell(), 8);
+    
+        if(sig == SIG_KLEI_BLOB) {
+            FSeek(offset);
+            KLEI_BLOB blob;
+            blobCount++;
+        }
+    }  
+} BlobList<read=BlobList_Read>;
+
+string BlobList_Read(BlobList &blobList) {
+    local string result;   
+    SPrintf(result, "%d", blobList.blobCount);
+    return result;
+};
+//---------------------------------------------------------------------
 // Main
 
 RequiresVersion(5, 0, 0);
@@ -211,5 +251,7 @@ ResourceNameList resourceNameList;
 SurfaceList surfaceList(resourceInfoList);
 FSeek(0); //Workaround
 TextureList textureList(resourceInfoList);
+FSeek(0); //Workaround
+BlobList blobList(resourceInfoList);
 
 Printf("End time: %s\n", GetCurrentTime("hh:mm:ss"));
