@@ -184,117 +184,43 @@ string ResourceNameList_Read(ResourceNameList &unk_struct2_array) {
 };
 //---------------------------------------------------------------------
 
-//SurfaceList ---------------------------------------------------------
-typedef struct (ResourceInfoList &ril) {
-    local int32 surfaceCount;
+//ResourceList -----------------------------------------------------
+typedef struct (ResourceInfoList &ril, string resSig) {
+    local int32 resCount;
     local int32 i;
     local int32 offset;
     local char sig[9];
+    local string type = resSig;
 
     for (i = 0; i < ril.itemsCount; i++) {
-        offset = resourceInfoList.items[i].location;
+        offset = ril.items[i].location;
         FSeek(offset);
     
         ReadBytes(sig, FTell(), 8);
     
-        if(sig == SIG_KLEI_SURFACE) {
+        if(sig == resSig) {
             FSeek(offset);
-            KLEI_SRF surface;
-            surfaceCount++;
+            if(sig == SIG_KLEI_MODEL) {
+                KLEI_MDL model;
+            } else if(sig == SIG_KLEI_BLOB) {
+                KLEI_BLOB blob;
+            } else if(sig == SIG_KLEI_SURFACE) {
+                KLEI_SRF surface;
+            } else if(sig == SIG_KLEI_TEXTURE) {
+                KLEI_TEX texture;
+            }
+            resCount++;
         }
-    }  
-} SurfaceList<read=SurfaceList_Read>;
+    } 
+} ResourceList<read=ResourceList_Read>;
 
-string SurfaceList_Read(SurfaceList &surfaceList) {
+string ResourceList_Read(ResourceList &resList) {
     local string result;   
-    SPrintf(result, "%d", surfaceList.surfaceCount);
+    SPrintf(result, "%s [%d]", resList.type, resList.resCount);
     return result;
 };
-//---------------------------------------------------------------------
+//-------------------------------------------------------------------
 
-//TextureList ---------------------------------------------------------
-typedef struct (ResourceInfoList &ril) {
-    local int32 textureCount;
-    local int32 i;
-    local int32 offset;
-    local char sig[9];
-
-    for (i = 0; i < ril.itemsCount; i++) {
-        offset = resourceInfoList.items[i].location;
-        FSeek(offset);
-    
-        ReadBytes(sig, FTell(), 8);
-    
-        if(sig == SIG_KLEI_TEXTURE) {
-            FSeek(offset);
-            KLEI_TEX texture;
-            textureCount++;
-        }
-    }  
-} TextureList<read=TextureList_Read>;
-
-string TextureList_Read(TextureList &textureList) {
-    local string result;   
-    SPrintf(result, "%d", textureList.textureCount);
-    return result;
-};
-//---------------------------------------------------------------------
-
-//BlobList ---------------------------------------------------------
-typedef struct (ResourceInfoList &ril) {
-    local int32 blobCount;
-    local int32 i;
-    local int32 offset;
-    local char sig[9];
-
-    for (i = 0; i < ril.itemsCount; i++) {
-        offset = resourceInfoList.items[i].location;
-        FSeek(offset);
-    
-        ReadBytes(sig, FTell(), 8);
-    
-        if(sig == SIG_KLEI_BLOB) {
-            FSeek(offset);
-            KLEI_BLOB blob;
-            blobCount++;
-        }
-    }  
-} BlobList<read=BlobList_Read>;
-
-string BlobList_Read(BlobList &blobList) {
-    local string result;   
-    SPrintf(result, "%d", blobList.blobCount);
-    return result;
-};
-//---------------------------------------------------------------------
-
-//ModelList ---------------------------------------------------------
-typedef struct (ResourceInfoList &ril) {
-    local int32 modelCount;
-    local int32 i;
-    local int32 offset;
-    local char sig[9];
-
-    for (i = 0; i < ril.itemsCount; i++) {
-        offset = resourceInfoList.items[i].location;
-        FSeek(offset);
-    
-        ReadBytes(sig, FTell(), 8);
-    
-        if(sig == SIG_KLEI_MODEL) {
-            FSeek(offset);
-            KLEI_MDL model;
-            modelCount++;
-        }
-    }  
-} ModelList<read=ModelList_Read>;
-
-string ModelList_Read(ModelList &modelList) {
-    local string result;   
-    SPrintf(result, "%d", modelList.modelCount);
-    return result;
-};
-//---------------------------------------------------------------------
 // Main
 
 RequiresVersion(5, 0, 0);
@@ -308,12 +234,13 @@ int32 slabCount;
 
 ResourceInfoList resourceInfoList;
 ResourceNameList resourceNameList;
-SurfaceList surfaceList(resourceInfoList);
+
+ResourceList surfaceList(resourceInfoList, SIG_KLEI_SURFACE);
 FSeek(0); //Workaround
-TextureList textureList(resourceInfoList);
+ResourceList textureList(resourceInfoList, SIG_KLEI_TEXTURE);
 FSeek(0); //Workaround
-BlobList blobList(resourceInfoList);
+ResourceList blobList(resourceInfoList, SIG_KLEI_BLOB);
 FSeek(0); //Workaround
-ModelList modelList(resourceInfoList);
+ResourceList modelList(resourceInfoList, SIG_KLEI_MODEL);
 
 Printf("End time: %s\n", GetCurrentTime("hh:mm:ss"));
