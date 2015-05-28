@@ -14,6 +14,12 @@
 // ResourceInfo[Names.index] -> Resource
 // ResourceInfo[Names[TexResource.index]] -> NewResource - "TexResource" is a part of "NewResource"
 
+// MDL1
+// anims.kwad
+// res info 5057 - location 1A6A230h
+// res name 6744 - name "anims/Final_room/finalroom_1x1_centerconsole1.anim/keyboard_fx_b-27.mdl"
+
+// MDL maps to KLEIMDL1
 // PNG maps to KLEITEX1
 // TEX maps to KLEISRF1
 //--------------------------------------
@@ -126,6 +132,32 @@ int KLEI_BLOB_Size(KLEI_BLOB &blob) {
 } 
 //---------------------------------------------------------------------
 
+//KLEI_MODEL --------------------------------------------------------
+typedef struct {
+    byte signature[8]<open=suppress>; //KLEIMDL1
+    int32 structSize <format=hex>; //including signature and this field (in bytes)
+    int32 index<format=decimal>;
+    byte _q_signature[4]<format=hex, open=suppress>;
+    int32 _q_indices[9];
+    struct VertexArray {
+        struct VertexAttributes {
+            struct Position {
+                float x;
+                float y;
+            } position;
+            struct TexCoord {
+                float u;
+                float v;
+            } texCoord;
+        } vertexAttributes;
+    } vertexArray[4];
+} KLEI_MDL<size=KLEI_MDL_Size>; 
+
+int KLEI_MDL_Size(KLEI_MDL &model) {
+    return ReadUInt(startof(model)+8);
+} 
+//---------------------------------------------------------------------
+
 //ResourceInfoList ----------------------------------------------------
 typedef struct {
     int32 itemsCount <hidden=true>;
@@ -235,6 +267,34 @@ string BlobList_Read(BlobList &blobList) {
     return result;
 };
 //---------------------------------------------------------------------
+
+//ModelList ---------------------------------------------------------
+typedef struct (ResourceInfoList &ril) {
+    local int32 modelCount;
+    local int32 i;
+    local int32 offset;
+    local char sig[9];
+
+    for (i = 0; i < ril.itemsCount; i++) {
+        offset = resourceInfoList.items[i].location;
+        FSeek(offset);
+    
+        ReadBytes(sig, FTell(), 8);
+    
+        if(sig == SIG_KLEI_MODEL) {
+            FSeek(offset);
+            KLEI_MDL model;
+            modelCount++;
+        }
+    }  
+} ModelList<read=ModelList_Read>;
+
+string ModelList_Read(ModelList &modelList) {
+    local string result;   
+    SPrintf(result, "%d", modelList.modelCount);
+    return result;
+};
+//---------------------------------------------------------------------
 // Main
 
 RequiresVersion(5, 0, 0);
@@ -253,5 +313,7 @@ FSeek(0); //Workaround
 TextureList textureList(resourceInfoList);
 FSeek(0); //Workaround
 BlobList blobList(resourceInfoList);
+FSeek(0); //Workaround
+ModelList modelList(resourceInfoList);
 
 Printf("End time: %s\n", GetCurrentTime("hh:mm:ss"));
