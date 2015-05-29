@@ -158,6 +158,73 @@ int KLEI_MDL_Size(KLEI_MDL &model) {
 } 
 //---------------------------------------------------------------------
 
+//KLEI_AMINATION --------------------------------------------------------
+typedef struct {
+    byte signature[8]<open=suppress, bgcolor=0xF4A903>; //KLEIANM1
+    int32 structSize <format=hex>; //including signature and this field (in bytes)
+    
+    int32 animCount<hidden=true>;
+    struct Animation {
+        int32 nameHash<format=hex>;
+        char name[20];
+        int32 rootSymbolHash<format=hex>;
+        float frameRate;
+        int32 facingMask<format=hex>; //1 2 4 8?
+        int32 frameIndex;
+        int32 frameCount;
+    } anims[animCount]<read=Animation_Read>;
+
+    int32 frameCount<hidden=true>;
+    struct Frame {
+	    int32 eventIdx;
+	    int32 eventCount;
+	    int32 instanceIdx;
+	    int32 instanceCount;
+    } frames[frameCount];
+    int32 __padding__<hidden=true>;
+
+    int32 instanceCount<hidden=true>;
+    struct Instance {
+        int32 symbolHash<format=hex>;
+        int32 folderHash<format=hex>;
+        int32 parentHash<format=hex>;
+        int32 symbolFrame;
+        int32 parentTransformIdx;
+        int32 transformIdx;
+        int32 CMIdx;
+        int32 CAIdx;
+    } instances[instanceCount];
+
+    int32 colourCount<hidden=true>;
+    struct Colour { //USColorVec in Moai framework
+        float r;
+        float g;
+        float b;
+        float a;
+    } colours[colourCount];
+
+    int32 transformCount<hidden=true>;
+    struct Transform { //USAffine3D in Moai framework
+        float c0[3]; //4 cols, 3 rows
+        float c1[3];
+        float c2[3];
+        float c3[3];
+    } transforms[transformCount];
+    int32 ___padding___<hidden=true>;
+
+} KLEI_ANM<size=KLEI_ANM_Size, bgcolor=0xFEF5E1>; 
+
+int KLEI_ANM_Size(KLEI_ANM &animation) {
+    return ReadUInt(startof(animation)+8);
+} 
+
+string Animation_Read(Animation &animation) {
+    local string result;   
+    SPrintf(result, "%s", animation.name);
+    return result;
+} 
+//---------------------------------------------------------------------
+
 //ResourceInfoList ----------------------------------------------------
 typedef struct {
     int32 itemsCount <hidden=true>;
@@ -208,6 +275,8 @@ typedef struct (ResourceInfoList &ril, string resSig) {
                 KLEI_SRF surface;
             } else if(sig == SIG_KLEI_TEXTURE) {
                 KLEI_TEX texture;
+            } else if(sig == SIG_KLEI_ANIMATION) {
+                KLEI_ANM animation;
             }
             resCount++;
         }
@@ -242,5 +311,7 @@ FSeek(0); //Workaround
 ResourceList blobList(resourceInfoList, SIG_KLEI_BLOB);
 FSeek(0); //Workaround
 ResourceList modelList(resourceInfoList, SIG_KLEI_MODEL);
+FSeek(0); //Workaround
+ResourceList animationList(resourceInfoList, SIG_KLEI_ANIMATION);
 
 Printf("End time: %s\n", GetCurrentTime("hh:mm:ss"));
