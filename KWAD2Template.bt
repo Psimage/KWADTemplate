@@ -180,8 +180,8 @@ typedef struct {
         char name[20]<open=suppress>;
         int32 rootSymbolHash<format=hex>;
         float frameRate;
-        int32 facingMask<format=hex>;   //16 - West, 64 - South, 4 - North, 1 - East
-                                        //?S?W?N?E
+        int32 facingMask<format=hex>;   //64(40h) - South, 16(10h) - West, 4(4h) - North, 1(1h) - East
+                                        //FFFFFFFF(-1) - Mask was not specified 
         int32 frameIndex;
         int32 frameCount;
     } anims[animCount]<read=Animation_Read>;
