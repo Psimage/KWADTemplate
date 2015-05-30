@@ -19,6 +19,8 @@
 // res info 5057 - location 1A6A230h
 // res name 6744 - name "anims/Final_room/finalroom_1x1_centerconsole1.anim/keyboard_fx_b-27.mdl"
 
+// ADEF -> KLEIANM1 -> animation definition -> animation.xml
+// ABLD -> KLEIBLD1 -> animation build -> build.xml
 // MDL maps to KLEIMDL1
 // PNG maps to KLEITEX1
 // TEX maps to KLEISRF1
@@ -29,7 +31,16 @@
 #define SIG_KLEI_BLOB       "KLEIBLOB" // data as is
 #define SIG_KLEI_ANIMATION  "KLEIANM1"
 #define SIG_KLEI_MODEL      "KLEIMDL1"
-#define SIG_KLEI_BLD        "KLEIBLD1" // has .fla file names in it (related to Adobe Flash .fla files?)
+#define SIG_KLEI_BUILD      "KLEIBLD1" // has .fla file names in it (related to Adobe Flash .fla files)
+
+//USAffine3D ---------------------------------------------------------
+typedef struct { //USAffine3D in Moai framework
+    float c0[3]; //4 cols, 3 rows
+    float c1[3];
+    float c2[3];
+    float c3[3];
+} USAffine3D;
+//---------------------------------------------------------------------
 
 //ResourceInfo -------------------------------------------------------
 typedef struct {
@@ -166,10 +177,11 @@ typedef struct {
     int32 animCount<hidden=true>;
     struct Animation {
         int32 nameHash<format=hex>;
-        char name[20];
+        char name[20]<open=suppress>;
         int32 rootSymbolHash<format=hex>;
         float frameRate;
-        int32 facingMask<format=hex>; //1 2 4 8?
+        int32 facingMask<format=hex>;   //16 - West, 64 - South, 4 - North, 1 - East
+                                        //?S?W?N?E
         int32 frameIndex;
         int32 frameCount;
     } anims[animCount]<read=Animation_Read>;
@@ -204,12 +216,7 @@ typedef struct {
     } colours[colourCount];
 
     int32 transformCount<hidden=true>;
-    struct Transform { //USAffine3D in Moai framework
-        float c0[3]; //4 cols, 3 rows
-        float c1[3];
-        float c2[3];
-        float c3[3];
-    } transforms[transformCount];
+    USAffine3D transforms[transformCount];
     int32 ___padding___<hidden=true>;
 
 } KLEI_ANM<size=KLEI_ANM_Size, bgcolor=0xFEF5E1>; 
@@ -222,6 +229,46 @@ string Animation_Read(Animation &animation) {
     local string result;   
     SPrintf(result, "%s", animation.name);
     return result;
+} 
+//---------------------------------------------------------------------
+
+//KLEI_BUILD --------------------------------------------------------
+typedef struct {
+    byte signature[8]<open=suppress>; //KLEIBLD1
+    int32 structSize <format=hex>; //including signature and this field (in bytes)
+
+    int32 nameLength<hidden=true>;
+    char name[nameLength]<open=suppress>;
+    if((nameLength & 3) != 0) { //4 bytes aligned
+        byte padding[4 - (nameLength & 3)] <hidden=true>;
+    }
+
+    int32 symbolsCount<hidden=true>;
+    struct Symbol {
+        int32 hash<format=hex>;
+        char name[20];
+        int32 frameIdx;
+        int32 frameCount;
+    } symbols[symbolsCount]<read=Symbol_Read>;
+
+    int32 symbolFrameCount<hidden=true>;
+    struct SymbolFrame {
+        int32 modelIdx;
+        USAffine3D transform;
+    } symbolFrames[symbolFrameCount];
+
+} KLEI_BLD<size=KLEI_BLD_Size, read=KLEI_BLD_Read>; 
+
+int KLEI_BLD_Size(KLEI_BLD &build) {
+    return ReadUInt(startof(build)+8);
+} 
+
+string KLEI_BLD_Read(KLEI_BLD &build) {
+    return build.name;
+} 
+
+string Symbol_Read(Symbol &symbol) {
+    return symbol.name;
 } 
 //---------------------------------------------------------------------
 
@@ -277,6 +324,8 @@ typedef struct (ResourceInfoList &ril, string resSig) {
                 KLEI_TEX texture;
             } else if(sig == SIG_KLEI_ANIMATION) {
                 KLEI_ANM animation;
+            } else if(sig == SIG_KLEI_BUILD) {
+                KLEI_BLD build;
             }
             resCount++;
         }
@@ -313,5 +362,7 @@ FSeek(0); //Workaround
 ResourceList modelList(resourceInfoList, SIG_KLEI_MODEL);
 FSeek(0); //Workaround
 ResourceList animationList(resourceInfoList, SIG_KLEI_ANIMATION);
+FSeek(0); //Workaround
+ResourceList buildList(resourceInfoList, SIG_KLEI_BUILD);
 
 Printf("End time: %s\n", GetCurrentTime("hh:mm:ss"));
