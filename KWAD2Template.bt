@@ -21,7 +21,8 @@
 #define SIG_KLEI_MODEL      "KLEIMDL1" // .mdl
 #define SIG_KLEI_BUILD      "KLEIBLD1" // .abld
 
-typedef int32   u32;
+typedef uint32  u32;
+typedef int32   s32;
 typedef float   f32;
 
 //USAffine3D ---------------------------------------------------------
@@ -50,7 +51,7 @@ string ResourceInfo_Read(ResourceInfo &info) {
 typedef struct {
     struct EncodedString{
         u32 length;
-        char charArray[length + (4 - length % 4) % 4];
+        char charArray[length + (4 - length % 4) % 4]<open=suppress>;
     } aliasPath<size=EncodedString_Size, read=EncodedString_Read>; 
 
     u32 resourceIdx; //Index into ResourceInfoList
@@ -147,24 +148,23 @@ typedef struct {
 
     u32 textureResourceIdx; //index into ResourceInfoList. Probably should point to texture type (KLEITEX) resource only
     
-    byte _q_signature[4]<format=hex, open=suppress>; //TODO: clarification
+    struct Mesh {
+        byte signature[4]<open=suppress>; //KMe1 (KLEI Mesh 1)
  
-    u32 _q_polygonCount; //TODO: clarification
-    u32 indexCount;
-    u32 vertexCount;
+        u32 polygonCount;
+        u32 indexCount;
+        u32 vertexCount;
+        
+        s32 indices[indexCount];
     
-    u32 indexArray[indexCount];
-
-    struct Vertex {
-        struct Position {
+        struct Vertex {
             f32 x;
             f32 y;
-        } position;
-        struct TexCoord {
+
             f32 u;
             f32 v;
-        } texCoord;
-    } vertices[vertexCount];
+        } vertices[vertexCount];    
+    } mesh;
 
 } KLEI_MDL<size=KLEI_MDL_Size, read=KLEI_MDL_Read>; 
 
@@ -218,8 +218,8 @@ typedef struct {
         u32 symbolFrame;
         u32 parentTransformIdx;
         u32 transformIdx;
-        u32 CMIdx; //TODO: clarification (Colour Modifier index? colours[i])
-        u32 CAIdx; //TODO: clarification (The value is always 1)
+        u32 CMIdx; //Colour Modulate index into colours (multiplicative blending)
+        u32 CAIdx; //Color Add index (additive blending)
     } instances[instanceCount];
 
     u32 colourCount<hidden=true>;
@@ -263,7 +263,7 @@ typedef struct {
     u32 symbolsCount<hidden=true>;
     struct Symbol {
         u32 hash<format=hex>;
-        char name[20];
+        char name[20]<open=suppress>;
         u32 frameIdx;
         u32 frameCount;
     } symbols[symbolsCount]<read=Symbol_Read>;
