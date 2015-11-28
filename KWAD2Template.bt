@@ -26,11 +26,35 @@ typedef int32   s32;
 typedef float   f32;
 
 //USAffine3D ---------------------------------------------------------
+//Flash matrix
+//[a  c  tx]
+//[b  d  ty]
+//[0  0  1]
+
+// a - X scale
+// b - Y skew
+// c - X skew
+// y - Y scale
+// tx - X position
+// ty - Y position
+
+//Moai matrix in relation to flash matrix
+//[a  c  0  tx]
+//[b  d  0  ty]
+//[0  0  1  0]
 typedef struct { //USAffine3D in Moai framework
-    f32 c0[3]; //4 cols, 3 rows Matrix
-    f32 c1[3];
-    f32 c2[3];
-    f32 c3[3];
+    f32 c1r1<name="X scale (a)">;
+    f32 c1r2<name="Y skew (b)">;
+    f32 c1r3<hidden=true>;
+    f32 c2r1<name="X skew (c)">;
+    f32 c2r2<name="Y scale (d)">;
+    f32 c2r3<hidden=true>;
+    f32 c3r1<hidden=true>;
+    f32 c3r2<hidden=true>;
+    f32 c3r3<hidden=true>;
+    f32 c4r1<name="X position (tx)">;
+    f32 c4r2<name="Y position (ty)">;
+    f32 c4r3<hidden=true>;
 } USAffine3D;
 //--------------------------------------------------------------------
 
@@ -190,10 +214,21 @@ typedef struct {
         char name[20]<open=suppress>;
         u32 rootSymbolHash<format=hex>;
         f32 frameRate;
-        u32 facingMask<format=hex>; //64(40h) - South, 16(10h) - West, 4(4h) - North, 1(1h) - East
-                                    //FFFFFFFF(-1) - Mask was not specified 
-                                    //EBNF: animation name = name,[_{(S|W|N|E)_}]
-                                    //Example: idle_S_N_
+        u32 facingMask<format=hex>;
+                                    //-1(FFFFFFFFh) - Not specified 
+                                    //1(1h)   - E
+                                    //2(2h)   - NE
+                                    //4(4h)   - N
+                                    //8(8h)   - NW
+                                    //16(10h) - W
+                                    //32(20h) - SW
+                                    //64(40h) - S
+                                    //128(80h)- SE
+                                    // Example mask 8Bh: 
+                                    // 8Bh = 0x80 + 0x8 + 0x2 + 0x1 =
+                                    // = SE + NW + NE + E =
+                                    // [name]_E_NE_NW_SE_
+                                    // (from lowest to highest)
         u32 frameIdx;
         u32 frameCount;
     } anims[animCount]<read=Animation_Read>;
