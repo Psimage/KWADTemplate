@@ -1,0 +1,429 @@
+//--------------------------------------------------------------------
+//--- 010 Editor v6.0.3 Binary Template
+//
+// Author: Yaroslav "Strelock" Bugaev
+//--------------------------------------------------------------------
+
+//--------------------------------------------------------------------
+//--- Notes
+//
+// ADEF -> KLEIANM1 -> animation definition -> animation.xml
+// ABLD -> KLEIBLD1 -> animation build      -> build.xml
+// MDL  -> KLEIMDL1 -> Model (Vertex Buffer)
+// PNG  -> KLEITEX1 -> Sub-image/Sprite (only "meta", image is in SRF)
+// TEX  -> KLEISRF1 -> Texture Atlas/Sprite sheet
+//--------------------------------------------------------------------
+
+#define SIG_KLEI_SURFACE    "KLEISRF1" // .tex
+#define SIG_KLEI_TEXTURE    "KLEITEX1" // .png
+#define SIG_KLEI_BLOB       "KLEIBLOB" // data as is
+#define SIG_KLEI_ANIMATION  "KLEIANM1" // .adef
+#define SIG_KLEI_MODEL      "KLEIMDL1" // .mdl
+#define SIG_KLEI_BUILD      "KLEIBLD1" // .abld
+
+typedef uint32  u32;
+typedef int32   s32;
+typedef float   f32;
+
+//USAffine3D ---------------------------------------------------------
+//Flash matrix
+//[a  c  tx]
+//[b  d  ty]
+//[0  0  1]
+
+// a - X scale
+// b - Y skew
+// c - X skew
+// y - Y scale
+// tx - X position
+// ty - Y position
+
+//Moai matrix in relation to flash matrix
+//[a  c  0  tx]
+//[b  d  0  ty]
+//[0  0  1  0]
+typedef struct { //USAffine3D in Moai framework
+    f32 c1r1<name="X scale (a)">;
+    f32 c1r2<name="Y skew (b)">;
+    f32 c1r3<hidden=true>;
+    f32 c2r1<name="X skew (c)">;
+    f32 c2r2<name="Y scale (d)">;
+    f32 c2r3<hidden=true>;
+    f32 c3r1<hidden=true>;
+    f32 c3r2<hidden=true>;
+    f32 c3r3<hidden=true>;
+    f32 c4r1<name="X position (tx)">;
+    f32 c4r2<name="Y position (ty)">;
+    f32 c4r3<hidden=true>;
+} USAffine3D;
+//--------------------------------------------------------------------
+
+//ResourceInfo -------------------------------------------------------
+typedef struct {
+    u32 slabIdx<format=hex>;
+    u32 size<format=hex>;
+    u32 offset<format=hex>;       //From the beginning of the file to the resource
+//    byte type[4]<open=suppress>;    //of this field type (should "logically" match with a signature)
+    local uchar type[4]<open=suppress>;
+    ReadBytes(type, offset+4, 4);   //Skip KLEI prefix in resource signature
+} ResourceInfo<read=ResourceInfo_Read, optimize=false>;
+
+string ResourceInfo_Read(ResourceInfo &info) {
+    return info.type;
+};
+//---------------------------------------------------------------------
+
+//AliasInfo -----------------------------------------------------------
+typedef struct {
+    struct EncodedString{
+        u32 length;
+        char charArray[length + (4 - length % 4) % 4]<open=suppress>;
+    } aliasPath<size=EncodedString_Size, read=EncodedString_Read>; 
+
+    u32 resourceIdx; //Index into ResourceInfoList
+} AliasInfo<read=AliasInfo_Read>;
+
+string AliasInfo_Read(AliasInfo &aliasInfo) {
+    return aliasInfo.aliasPath.charArray;
+};
+
+int EncodedString_Size(EncodedString &es) {
+    local u32 len = ReadUInt(startof(es));
+    local u32 charArraySize = len + (4 - len % 4) % 4;
+    return charArraySize + 4;
+};
+
+string EncodedString_Read(EncodedString &es) {
+    return es.charArray;
+};
+//---------------------------------------------------------------------
+
+//KLEI_Surface --------------------------------------------------------
+typedef struct {
+    byte signature[8]<open=suppress>; //KLEISRF1
+    u32 structSize <format=hex>; //including signature and this field (in bytes)
+
+    u32 openglType<format=hex>; //0x83F3 = GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, 0x1908 = GL_RGBA
+    u32 openglStorageType<format=hex>; //0x8058 = GL_RGBA8_OES, 0x83F3 = GL_COMPRESSED_RGBA_S3TC_DXT5_EXT
+
+    u32 isDXTCompressed; //DXT5/BC3 Boolean
+
+    u32 mipmapCount;
+    u32 totalSizeOfAllMips<format=hex>;
+    struct MipmapLevel {
+        u32 size <format=hex>;
+        u32 widthPx; //in pixels
+        u32 heightPx;
+        byte data[size] <format=hex, open=suppress>; //zlib stream
+    } mipmap[mipmapCount]<optimize=false>;
+} KLEI_SRF<size=KLEI_SRF_Size>; 
+
+int KLEI_SRF_Size(KLEI_SRF &srf) {
+    return ReadUInt(startof(srf)+8);
+} 
+//---------------------------------------------------------------------
+
+//KLEI_Texture --------------------------------------------------------
+typedef struct {
+    byte signature[8]<open=suppress>; //KLEITEX1
+    u32 structSize <format=hex>; //including signature and this field (in bytes)
+
+    u32 parentSurfaceResourceIdx; //index into ResourceInfoList. Probably should point to surface type (KLEISRF) resource only
+    
+    u32 widthPx; //in pixels
+    u32 heightPx;
+
+    struct Affine2D {
+        f32 scaleX; //ralative to the size of surface in which it resides (value from 0 to 1)
+        f32 c2r1; //column/row
+        f32 c1r2;
+        f32 scaleY;
+        f32 translateX; // ralative to the size of surface in which it resides (value from 0 to 1)
+        f32 translateY; // ralative to the size of surface in which it resides (value from 0 to 1)
+    } affine2d;
+} KLEI_TEX<size=KLEI_TEX_Size, read=KLEI_TEX_Read>; 
+
+int KLEI_TEX_Size(KLEI_TEX &tex) {
+    return ReadUInt(startof(tex)+8);
+} 
+
+string KLEI_TEX_Read(KLEI_TEX &tex) {
+    local string result;
+    SPrintf(result, "%d", tex.parentSurfaceResourceIdx);
+    return result;
+};
+//------------------------------------------------------------------
+
+//KLEI_Blob --------------------------------------------------------
+typedef struct {
+    byte signature[8]<open=suppress>; //KLEIBLOB
+    u32 dataSize <format=hex>;
+    byte data[dataSize]<open=suppress>;
+} KLEI_BLOB<size=KLEI_BLOB_Size>; 
+
+int KLEI_BLOB_Size(KLEI_BLOB &blob) {
+    return ReadUInt(startof(blob)+8)+12;
+} 
+//---------------------------------------------------------------------
+
+//KLEI_MODEL --------------------------------------------------------
+typedef struct {
+    byte signature[8]<open=suppress>; //KLEIMDL1
+    u32 structSize <format=hex>; //including signature and this field (in bytes)
+
+    u32 textureResourceIdx; //index into ResourceInfoList. Probably should point to texture type (KLEITEX) resource only
+    
+    struct Mesh {
+        byte signature[4]<open=suppress>; //KMe1 (KLEI Mesh 1)
+ 
+        u32 polygonCount;
+        u32 indexCount;
+        u32 vertexCount;
+        
+        s32 indices[indexCount];
+    
+        struct Vertex {
+            f32 x;
+            f32 y;
+
+            f32 u;
+            f32 v;
+        } vertices[vertexCount];    
+    } mesh;
+
+} KLEI_MDL<size=KLEI_MDL_Size, read=KLEI_MDL_Read>; 
+
+int KLEI_MDL_Size(KLEI_MDL &model) {
+    return ReadUInt(startof(model)+8);
+} 
+
+string KLEI_MDL_Read(KLEI_MDL &model) {
+    local string result;
+    SPrintf(result, "%d", model.textureResourceIdx);
+    return result;
+} 
+//---------------------------------------------------------------------
+
+//KLEI_AMINATION --------------------------------------------------------
+typedef struct {
+    byte signature[8]<open=suppress, bgcolor=0xF4A903>; //KLEIANM1
+    u32 structSize <format=hex>; //including signature and this field (in bytes)
+    
+    u32 animCount<hidden=true>;
+    struct Animation {
+byte data[64];
+/*        u32 nameHash<format=hex>;
+        char name[20]<open=suppress>;
+        u32 rootSymbolHash<format=hex>;
+        f32 frameRate;
+        u32 facingMask<format=hex>;
+                                    //-1(FFFFFFFFh) - Not specified 
+                                    //1(1h)   - E
+                                    //2(2h)   - NE
+                                    //4(4h)   - N
+                                    //8(8h)   - NW
+                                    //16(10h) - W
+                                    //32(20h) - SW
+                                    //64(40h) - S
+                                    //128(80h)- SE
+                                    // Example mask 8Bh: 
+                                    // 8Bh = 0x80 + 0x8 + 0x2 + 0x1 =
+                                    // = SE + NW + NE + E =
+                                    // [name]_E_NE_NW_SE_
+                                    // (from lowest to highest)
+        u32 frameIdx;
+        u32 frameCount; */
+    } anims[animCount]<read=Animation_Read>;
+
+    u32 frameCount<hidden=true>;
+    struct Frame {
+	    u32 eventIdx;
+	    u32 eventCount;
+	    u32 instanceIdx;
+	    u32 instanceCount;
+    } frames[frameCount];
+    
+    u32 eventCount<hidden=true>;
+    u32 events[eventCount]; //array of indexes that point to the strings (null-teminated)
+                            //in eventStrings char array
+
+    u32 instanceCount<hidden=true>;
+    struct Instance {
+byte data[204];
+/*
+        u32 symbolHash<format=hex>;
+        u32 folderHash<format=hex>;
+        u32 parentHash<format=hex>;
+        u32 symbolFrame;
+        u32 parentTransformIdx;
+        u32 transformIdx;
+        u32 CMIdx; //Colour Modulate index into colours (multiplicative blending)
+        u32 CAIdx; //Color Add index (additive blending)
+*/
+    } instances[instanceCount];
+
+    u32 colourCount<hidden=true>;
+    struct Colour { //USColorVec in Moai framework
+        f32 r;
+        f32 g;
+        f32 b;
+        f32 a;
+    } colours[colourCount];
+
+    u32 transformCount<hidden=true>;
+    USAffine3D transforms[transformCount];
+
+    u32 eventStringsSize<hidden=true>;
+    char eventStrings[eventStringsSize];
+
+} KLEI_ANM<size=KLEI_ANM_Size, bgcolor=0xFEF5E1>; 
+
+int KLEI_ANM_Size(KLEI_ANM &animation) {
+    return ReadUInt(startof(animation)+8);
+} 
+
+string Animation_Read(Animation &animation) {
+    local string result;   
+    SPrintf(result, "%s", animation.name);
+    return result;
+} 
+//---------------------------------------------------------------------
+
+//KLEI_BUILD --------------------------------------------------------
+typedef struct {
+    byte signature[8]<open=suppress>; //KLEIBLD1
+    u32 structSize <format=hex>; //including signature and this field (in bytes)
+
+    u32 nameLength<hidden=true>;
+    char name[nameLength]<open=suppress>;
+    if((nameLength & 3) != 0) { //4 bytes aligned
+        byte padding[4 - (nameLength & 3)] <hidden=true>;
+    }
+
+    u32 symbolsCount<hidden=true>;
+    struct Symbol {
+        u32 hash<format=hex>;
+        char name[20]<open=suppress>;
+        u32 frameIdx;
+        u32 frameCount;
+    } symbols[symbolsCount]<read=Symbol_Read>;
+
+    u32 symbolFrameCount<hidden=true>;
+    struct SymbolFrame {
+        u32 modelResourceIdx; //index into ResourceInfoList. Probably should point to model type (KLEIMDL) resource only
+        USAffine3D transform;
+    } frames[symbolFrameCount];
+
+} KLEI_BLD<size=KLEI_BLD_Size, read=KLEI_BLD_Read>; 
+
+int KLEI_BLD_Size(KLEI_BLD &build) {
+    return ReadUInt(startof(build)+8);
+} 
+
+string KLEI_BLD_Read(KLEI_BLD &build) {
+    return build.name;
+} 
+
+string Symbol_Read(Symbol &symbol) {
+    return symbol.name;
+} 
+//---------------------------------------------------------------------
+
+//ResourceInfoList ----------------------------------------------------
+typedef struct {
+    u32 itemsCount <hidden=true>;
+    ResourceInfo items[itemsCount];    
+} ResourceInfoList<read=ResourceInfoList_Read>;
+
+string ResourceInfoList_Read(ResourceInfoList &unk_struct1_array) {
+    local string result;   
+    SPrintf(result, "%d", unk_struct1_array.itemsCount);
+    return result;
+};
+//---------------------------------------------------------------------
+
+//AliasInfoList ----------------------------------------------------
+typedef struct {
+    u32 itemsCount <hidden=true>;
+    AliasInfo items[itemsCount] <optimize=false>;    
+} AliasInfoList<read=AliasInfoList_Read>;
+
+string AliasInfoList_Read(AliasInfoList &aliasInfoList) {
+    local string result;   
+    SPrintf(result, "%d", aliasInfoList.itemsCount);
+    return result;
+};
+//---------------------------------------------------------------------
+
+//ResourceList -----------------------------------------------------
+typedef struct (ResourceInfoList &ril, string resSig) {
+    local u32 resCount;
+    local u32 i;
+    local u32 offset;
+    local char sig[9];
+    local string type = resSig;
+
+    for (i = 0; i < ril.itemsCount; i++) {
+        offset = ril.items[i].offset;
+        FSeek(offset);
+    
+        ReadBytes(sig, FTell(), 8);
+    
+        if(sig == resSig) {
+            FSeek(offset);
+            if(sig == SIG_KLEI_MODEL) {
+                KLEI_MDL model;
+            } else if(sig == SIG_KLEI_BLOB) {
+                KLEI_BLOB blob;
+            } else if(sig == SIG_KLEI_SURFACE) {
+                KLEI_SRF surface;
+            } else if(sig == SIG_KLEI_TEXTURE) {
+                KLEI_TEX texture;
+            } else if(sig == SIG_KLEI_ANIMATION) {
+                KLEI_ANM animation;
+            } else if(sig == SIG_KLEI_BUILD) {
+                KLEI_BLD build;
+            } else {
+            }
+            resCount++;
+        }
+    } 
+} ResourceList<read=ResourceList_Read>;
+
+string ResourceList_Read(ResourceList &resList) {
+    local string result;   
+    SPrintf(result, "%s [%d]", resList.type, resList.resCount);
+    return result;
+};
+//-------------------------------------------------------------------
+
+//-------------------------------------------------------------------
+// Main
+
+RequiresVersion(5, 0, 0);
+LittleEndian();
+
+Printf("Start time: %s\n", GetCurrentTime("hh:mm:ss"));
+
+struct Header {
+    byte signature[8]<open=suppress>;
+    u32 fileSize;
+    u32 slabCount;
+    
+    ResourceInfoList resourceInfoList;
+    AliasInfoList aliasInfoList;
+} header;
+
+ResourceList surfaceList(header.resourceInfoList, SIG_KLEI_SURFACE);
+FSeek(0); //Workaround
+ResourceList textureList(header.resourceInfoList, SIG_KLEI_TEXTURE);
+FSeek(0); //Workaround
+ResourceList blobList(header.resourceInfoList, SIG_KLEI_BLOB);
+FSeek(0); //Workaround
+ResourceList modelList(header.resourceInfoList, SIG_KLEI_MODEL);
+FSeek(0); //Workaround
+ResourceList animationList(header.resourceInfoList, SIG_KLEI_ANIMATION);
+FSeek(0); //Workaround
+ResourceList buildList(header.resourceInfoList, SIG_KLEI_BUILD);
+
+Printf("End time: %s\n", GetCurrentTime("hh:mm:ss"));
